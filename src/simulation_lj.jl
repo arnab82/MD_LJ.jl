@@ -14,52 +14,6 @@ function lj_force(r::Float64)
     return force
 end
 
-
-function radial_distribution_function(positions, Lx, Ly, nbins=50)
-    dr = min(Lx, Ly) / (2 * nbins)
-    bins = collect(0:dr:min(Lx, Ly)/2)
-    rdf = zeros(nbins)
-
-    for i in 1:N
-        for j in i+1:N
-            rij = positions[j, :] - positions[i, :]
-            rij .= rij .- Lx * round.(Int, rij ./ Lx)
-            r = norm(rij)
-
-            if r < min(Lx, Ly) / 2
-                bin_index = floor(Int, r / dr) + 1
-                rdf[bin_index] += 2  # Count each particle pair only once
-            end
-        end
-    end
-
-    rdf /= (N * (N - 1) / 2) * π * (bins[2] - bins[1])^2
-
-    return bins, rdf
-end
-
-function speed_probability_density(velocities, nbin=32, dvel=0.16)
-    speeds = sqrt.(sum(velocities .^ 2, dims=2))
-    max_speed = maximum(speeds)
-    bins = collect(0:dvel:max_speed)
-
-    # Initialize histogram array
-    hist = zeros(nbin)
-
-    for v in speeds
-        ibin = floor(Int, v[1] / dvel) + 1
-        if ibin > nbin
-            ibin = nbin
-        end
-        hist[ibin] += 1  # Adjust index to start from 1
-    end
-
-    # Normalize by the number of particles and the number of MD time steps
-    hist /= (N * total_steps * dvel)
-
-    return bins, hist
-end
-
 function maxwell_boltzmann_distribution(v, A, m, k_B, T)
     return A * exp(-m * v^2 / (2 * k_B * T)) * v
 end
@@ -139,8 +93,6 @@ function md_simulation(positions, velocities, L, tau, steps,  temperature_interv
 
         push!(temperature_values, temperature)
         push!(pressure_values, pressure)
-        # Call compute_g! function
-        compute_g!(step, positions, N, Lx, Ly, gcum, nbin, dr)
         if step % temperature_interval == 0
             mean_temperature = mean(temperature_values[end-temperature_interval+1:end])
             mean_pressure = mean(pressure_values[end-temperature_interval+1:end])
@@ -153,8 +105,7 @@ function md_simulation(positions, velocities, L, tau, steps,  temperature_interv
     end
     return positions, velocities, forces
 end
-# Example usage
-# Example usage
+#Example
 N = 64
 Lx = 9
 Ly = 9
@@ -178,6 +129,6 @@ println("Potential Energy: $potential_energy")
 println("Total Energy: $total_energy")
 println("Temperature: $temperature")
 
-# Visualization (plotting particle positions)
+
 using Plots
 scatter([pos[1] for pos in positions], [pos[2] for pos in positions], xlabel="X", ylabel="Y", title="Particle Positions", legend=false)
