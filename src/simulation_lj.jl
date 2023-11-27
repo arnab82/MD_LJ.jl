@@ -20,49 +20,112 @@ end
 
 function apply_periodic_boundary_conditions!(positions, L)
     for i in 1:N
-        for j in 1:2
-            positions[i, j] %= L
+        if positions[i][1] > L
+            positions[i][1] -= L
+        elseif positions[i][1] < 0
+            positions[i][1] += L
+        end
+        if positions[i][2] > L
+            positions[i][2] -= L
+        elseif positions[i][2] < 0
+            positions[i][2] += L
         end
     end
 end
 function verlet_integration!(positions, velocities, forces, L, tau)
-    positions .+= tau * velocities + 0.5 * tau^2 * forces
-    apply_periodic_boundary_conditions!(positions, L)
-    new_forces = calculate_forces(positions, L)
-    velocities .+= 0.5 * tau * (forces + new_forces)
-    return positions, velocities, new_forces
-end
+    N = length(positions)
 
-function calculate_forces(positions, L)
-    forces = zeros(N, 2)
+    new_positions = deepcopy(positions)
+    # println(typeof(new_positions))
     for i in 1:N
-        for j in i+1:N
-            rij = [positions[j][1] - positions[i][1], positions[j][2] - positions[i][2]]
-            rij .-= L .* round.(Int, rij ./ L) # Apply periodic boundary conditions
-            r = norm(rij)
-            force_magnitude = lj_force(r)
-            force = force_magnitude * rij / r
-            forces[i] = force[1]
-            forces[j] -= force[2]
+        for dim in 1:2
+            # Update positions
+            new_positions[i][dim] = new_positions[i][dim] + tau * velocities[i, dim] + 0.5 * tau^2 * forces[i][dim]
+
+            # Apply periodic boundary conditions
+            if new_positions[i][dim] > L / 2
+                new_positions[i][dim] = (L - abs(new_positions[i][dim])) * (-new_positions[i][dim]) / abs(new_positions[i][dim])
+            end
         end
     end
-    display(forces)
-    println(typeof(forces))
+
+    apply_periodic_boundary_conditions!(new_positions, L)
+
+    # Update forces and velocities
+    new_forces = calculate_forces(new_positions, L, fc)
+    new_velocities = deepcopy(velocities)  # Make a copy to avoid modifying the original velocities array
+    for i in 1:N
+        for dim in 1:2
+            # println(i)
+            # println(dim)
+            # println((forces[i][dim] .+ new_forces[i][dim]))
+            # println(new_velocities[i, dim])
+            # Update velocities
+            new_velocities[i, dim] += 0.5 * tau * (forces[i][dim] .+ new_forces[i][dim])
+        end
+    end
+
+    return new_positions, new_velocities, new_forces
+end
+
+
+
+function calculate_forces(positions, L, fc, rcut=2.5)
+    forces = []
+
+    for i in 1:N
+        fx = 0.0
+        fy = 0.0
+        for j in i+1:N
+            rij = [positions[j][1] - positions[i][1], positions[j][2] - positions[i][2]]
+            if rij[1] > L / 2
+                rij[1] = (L - abs(rij[1])) * (-rij[1]) / abs(rij[1])
+            end
+            if rij[2] > L / 2
+                rij[2] = (L - abs(rij[2])) * (-rij[2]) / abs(rij[2])
+            end
+            # rij .-= L .* round.(Int, rij ./ L) # Apply periodic boundary conditions
+            r = norm(rij)
+            if r <= rcut
+                force_magnitude = lj_force(r)
+                force = force_magnitude * rij / r
+                force[1] -= fc
+                force[2] -= fc
+                # println("debug")
+                # println(force)
+                fx += force[1]
+                fy += force[2]
+
+            end
+        end
+        push!(forces, (fx, fy))
+    end
+
+    # display(forces)
+    # println(typeof(forces))
     return forces
 end
 
 
-function calculate_energy(positions, velocities, L)
+function calculate_energy(positions, velocities, L, Vc, fc, rc)
     kinetic_energy = 0.5 * sum(sum(velocities .^ 2, dims=2))
     potential_energy = 0.0
     for i in 1:N
         for j in i+1:N
             rij = [positions[j][1] - positions[i][1], positions[j][2] - positions[i][2]]
             # Apply periodic boundary conditions
-            rij .-= L .* round.(Int, rij ./ L)
-            
+            if rij[1] > L / 2
+                rij[1] = (L - abs(rij[1])) * (-rij[1]) / abs(rij[1])
+            end
+            if rij[2] > L / 2
+                rij[2] = (L - abs(rij[2])) * (-rij[2]) / abs(rij[2])
+            end
+            # rij .-= L .* round.(Int, rij ./ L)
+
             r = norm(rij)
-            potential_energy += 4 * ((1 / r)^12 - (1 / r)^6)
+            V = 4 * ((1 / r)^12 - (1 / r)^6)
+            Vm = V - Vc + r * fc - rc * fc
+            potential_energy += Vm
         end
     end
     return kinetic_energy, potential_energy
@@ -70,27 +133,49 @@ end
 
 
 
-function md_simulation(positions, velocities, L, tau, steps,  temperature_interval, equilibrium_steps, nbin=50, dr=0.025, gcum=zeros(nbin))
+function md_simulation(positions, velocities, L, tau, steps, temperature_interval, equilibrium_steps, fc, Vc, rc,tolerance=1e-3, stability_threshold=10)
     temperature_values = []
     pressure_values = []
     mean_temperature_values = []
     mean_pressure_values = []
-
-    for step in 1:equilibrium_steps
-        forces = calculate_forces(positions, L)
-        positions, velocities, forces = verlet_integration!(positions, velocities, forces, L, tau)
+    N = length(positions)
+    V= L^2
+    dV = 1.0
+    kB = 1.0
+    prev_mean_temperature = Inf
+    prev_mean_pressure = Inf
+    stability_counter = 0
     
+    for step in 1:equilibrium_steps
+        println("Step $step")
+        forces = calculate_forces(positions, L, fc)
+        positions, velocities, forces = verlet_integration!(positions, velocities, forces, L, tau)
 
         if step % steps == 0
             total_momentum = sum(velocities, dims=1)
             velocities .-= total_momentum / N
         end
 
-        kinetic_energy, potential_energy = calculate_energy(hcat(positions...), velocities, Lx)
+        kinetic_energy, potential_energy = calculate_energy(positions, velocities, Lx, Vc, fc, rc)
 
         temperature = (2 / (3 * N)) * kinetic_energy
-        pressure = (N / (Lx * Ly)) * kinetic_energy + (1 / (Lx * Ly)) * sum(forces .* velocities)
+        pairwise_distances = [norm(positions[i] - positions[j]) for i in 1:N for j in 1:N if i != j]
+        pairwise_forces = Float64[]
 
+        for i in 1:N
+            for j in 1:N
+                if i != j
+                    force = 0.0
+                    for k in 1:2
+                        force += forces[i][k] * (positions[i][k] - positions[j][k])
+                    end
+                    push!(pairwise_forces, force / pairwise_distances[(i-1)*(N-1)+(j-1)])
+                end
+            end
+        end
+        pressure_term = 0.5 * sum(pairwise_distances .* pairwise_forces)
+
+        pressure = (N / V) * kB * temperature + (1 / dV) * pressure_term
         push!(temperature_values, temperature)
         push!(pressure_values, pressure)
         if step % temperature_interval == 0
@@ -101,25 +186,50 @@ function md_simulation(positions, velocities, L, tau, steps,  temperature_interv
             push!(mean_pressure_values, mean_pressure)
 
             println("Step $step: Mean Temperature = $mean_temperature, Mean Pressure = $mean_pressure")
+            
+            # Check for stability
+            if abs(mean_temperature - prev_mean_temperature) < tolerance && abs(mean_pressure - prev_mean_pressure) < tolerance
+                stability_counter += 1
+            else
+                stability_counter = 0
+            end
+            
+            if stability_counter >= stability_threshold
+                println("System has reached equilibrium. Stopping simulation.")
+                break
+            end
+            
+            prev_mean_temperature = mean_temperature
+            prev_mean_pressure = mean_pressure
         end
     end
     return positions, velocities, forces
 end
+
 #Example
 N = 64
 Lx = 9
 Ly = 9
-L=Lx
+L = Lx
 tau = 0.01
 steps = 200
 total_steps = 200
 
 # Generate initial positions and velocities
-lattice = SquareLattice(9, 9, 64,1.0)
-
+lattice = SquareLattice(9, 9, 64, 1.0)
+rcut = 2.5
+fc = 24 * (2 * (1 / rcut)^12 - (1 / rcut)^6) / rcut
+Vc = 4 * ((1 / rcut)^12 - (1 / rcut)^6)
 positions, velocities = lattice.positions, lattice.velocities
-positions, velocities, forces = md_simulation(positions, velocities, L, tau, steps, 10, 1000)
-kinetic_energy, potential_energy = calculate_energy(positions, velocities, L)
+kinetic_energy, potential_energy = calculate_energy(positions, velocities, L, Vc, fc, rcut)
+forces = calculate_forces(positions, L, fc)
+display(velocities)
+display(velocities[1][1])
+display(velocities[1, 2])
+println(typeof(velocities))
+new_positions, new_velocities, new_forces = verlet_integration!(positions, velocities, forces, L, tau)
+positions, velocities, forces = md_simulation(positions, velocities, L, tau, steps, 10, 1000, fc, Vc, rcut)
+
 total_energy = kinetic_energy + potential_energy
 temperature = (2 / (3 * N)) * kinetic_energy
 

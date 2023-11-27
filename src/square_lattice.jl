@@ -3,15 +3,19 @@ mutable struct SquareLattice
     Ly::Int
     N::Int
     velocities::Array{Float64, 2}
-    positions::Array{Tuple{Int, Int}, 1}
+    positions::Array{Array{Float64, 1}, 1}
 end
 
 # Default constructor
-SquareLattice(Lx::Int, Ly::Int, N::Int) = SquareLattice(Lx, Ly, N, zeros(Float64, N, 2), [])
+SquareLattice(Lx::Int, Ly::Int, N::Int) = begin
+    positions = [[i, j] for i in 1:Lx-1 for j in 1:Ly-1]
+    velocities = zeros(Float64, N, 2)
+    return SquareLattice(Lx, Ly, N, velocities, positions)
+end
 
 # Constructor with initial velocities based on Maxwell-Boltzmann distribution
 SquareLattice(Lx::Int, Ly::Int, N::Int, temperature::Float64) = begin
-    positions = [(i, j) for i in 1:Lx-1 for j in 1:Ly-1]
+    positions = [[i, j] for i in 1:Lx-1 for j in 1:Ly-1]
     
     # Initialize velocities based on Maxwell-Boltzmann distribution
     mass = 1.0  # Assuming unit mass for simplicity
@@ -28,6 +32,7 @@ SquareLattice(Lx::Int, Ly::Int, N::Int, temperature::Float64) = begin
     
     return SquareLattice(Lx, Ly, N, velocities, positions)
 end
+
 lattice = SquareLattice(9,9, 64,1.0)
 
 initial_positions, initial_velocities = lattice.positions, lattice.velocities
