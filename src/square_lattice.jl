@@ -18,7 +18,7 @@ SquareLattice(Lx::Int, Ly::Int, N::Int, temperature::Float64) = begin
     positions = [[i, j] for i in 1:Lx-1 for j in 1:Ly-1]
     
     # Initialize velocities based on Maxwell-Boltzmann distribution
-    mass = 1.0  # Assuming unit mass for simplicity
+    mass = 1.0  
     velocities = sqrt(temperature) * randn(N, 2)
     
     # Ensure conservation of total linear momentum
@@ -33,14 +33,3 @@ SquareLattice(Lx::Int, Ly::Int, N::Int, temperature::Float64) = begin
     return SquareLattice(Lx, Ly, N, velocities, positions)
 end
 
-lattice = SquareLattice(9,9, 64,1.0)
-
-initial_positions, initial_velocities = lattice.positions, lattice.velocities
-println("Initial Positions:")
-
-display(initial_positions)
-println("Initial Velocities:")
-display(initial_velocities)
-
-println(typeof(initial_positions))
-println(typeof(initial_velocities))

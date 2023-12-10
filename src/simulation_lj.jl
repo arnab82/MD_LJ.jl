@@ -3,7 +3,6 @@ using Statistics
 using Plots
 using LinearAlgebra
 using Optim
-include("square_lattice.jl")
 function lj_force(r::Float64)
     epsilon = 1.0
     sigma = 1.0
@@ -32,7 +31,7 @@ function apply_periodic_boundary_conditions!(positions, L)
         end
     end
 end
-function verlet_integration!(positions, velocities, forces, L, tau)
+function verlet_integration!(positions, velocities, forces, L, tau,fc)
     N = length(positions)
 
     new_positions = deepcopy(positions)
@@ -72,7 +71,7 @@ end
 
 function calculate_forces(positions, L, fc, rcut=2.5)
     forces = []
-
+    N = length(positions)
     for i in 1:N
         fx = 0.0
         fy = 0.0
@@ -133,7 +132,7 @@ end
 
 
 
-function md_simulation(positions, velocities, L, tau, steps, temperature_interval, equilibrium_steps, fc, Vc, rc,tolerance=1e-3, stability_threshold=10)
+function md_simulation(positions, velocities, L, tau, steps, temperature_interval, equilibrium_steps, fc, Vc, rc,tolerance=1e-3, stability_threshold=5)
     temperature_values = []
     pressure_values = []
     mean_temperature_values = []
@@ -149,7 +148,7 @@ function md_simulation(positions, velocities, L, tau, steps, temperature_interva
     for step in 1:equilibrium_steps
         println("Step $step")
         forces = calculate_forces(positions, L, fc)
-        positions, velocities, forces = verlet_integration!(positions, velocities, forces, L, tau)
+        positions, velocities, forces = verlet_integration!(positions, velocities, forces, L, tau,fc)
 
         if step % steps == 0
             total_momentum = sum(velocities, dims=1)
@@ -190,6 +189,7 @@ function md_simulation(positions, velocities, L, tau, steps, temperature_interva
             # Check for stability
             if abs(mean_temperature - prev_mean_temperature) < tolerance && abs(mean_pressure - prev_mean_pressure) < tolerance
                 stability_counter += 1
+                println("System is stable. Stability counter = $stability_counter")
             else
                 stability_counter = 0
             end
@@ -203,42 +203,5 @@ function md_simulation(positions, velocities, L, tau, steps, temperature_interva
             prev_mean_pressure = mean_pressure
         end
     end
-    return positions, velocities, forces
+    return positions, velocities
 end
-
-#Example
-N = 64
-Lx = 9
-Ly = 9
-L = Lx
-tau = 0.01
-steps = 200
-total_steps = 200
-
-# Generate initial positions and velocities
-lattice = SquareLattice(9, 9, 64, 1.0)
-rcut = 2.5
-fc = 24 * (2 * (1 / rcut)^12 - (1 / rcut)^6) / rcut
-Vc = 4 * ((1 / rcut)^12 - (1 / rcut)^6)
-positions, velocities = lattice.positions, lattice.velocities
-kinetic_energy, potential_energy = calculate_energy(positions, velocities, L, Vc, fc, rcut)
-forces = calculate_forces(positions, L, fc)
-display(velocities)
-display(velocities[1][1])
-display(velocities[1, 2])
-println(typeof(velocities))
-new_positions, new_velocities, new_forces = verlet_integration!(positions, velocities, forces, L, tau)
-positions, velocities, forces = md_simulation(positions, velocities, L, tau, steps, 10, 1000, fc, Vc, rcut)
-
-total_energy = kinetic_energy + potential_energy
-temperature = (2 / (3 * N)) * kinetic_energy
-
-println("Equilibrium reached in steps.")
-println("Kinetic Energy: $kinetic_energy")
-println("Potential Energy: $potential_energy")
-println("Total Energy: $total_energy")
-println("Temperature: $temperature")
-
-
-using Plots
-scatter([pos[1] for pos in positions], [pos[2] for pos in positions], xlabel="X", ylabel="Y", title="Particle Positions", legend=false)

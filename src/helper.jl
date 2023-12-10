@@ -69,34 +69,3 @@ function compute_equilibrium_prob(N, vx, vy, nbin, dvel, num_steps, m, kB, T)
     return v_squared, prob, theoretical_prob,v_values_random
 end
 
-# Example 
-N = 64 
-vx = randn(N)  
-vy = randn(N) 
-nbin = 32
-dvel = 0.16
-num_steps = 1000
-m = 1.0  # Particle mass
-kB = 1.0  # Boltzmann constant
-T = 300.0  # Temperature
-
-# Call the function to get the data
-v_squared, prob, theoretical_prob ,v_values= compute_equilibrium_prob(N, vx, vy, nbin, dvel, num_steps, m, kB, T)
-
-# Plot the results
-v_values = collect(0:dvel:(nbin - 1) * dvel)
-plot(v_values, prob, xlabel="v", ylabel="P(v)", label="Simulation")
-plot(v_values, theoretical_prob, label="Maxwell-Boltzmann Distribution")
-
-Lx = Ly = 10.0  
-nbin = 1000 
-gcum = zeros(Float64, nbin)  
-ncorrel = 1000 
-dr = 0.025 
-
-
-normalize_g(ncorrel, N, Lx, Ly, gcum, dr,nbin)
-N=10
-x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]  
-y = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
-compute_g(ncorrel, x, y, N, Lx, Ly, gcum, nbin, dr)
