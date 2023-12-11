@@ -18,6 +18,7 @@ function maxwell_boltzmann_distribution(v, A, m, k_B, T)
 end
 
 function apply_periodic_boundary_conditions!(positions, L)
+    N= length(positions)
     for i in 1:N
         if positions[i][1] > L
             positions[i][1] -= L
@@ -31,7 +32,7 @@ function apply_periodic_boundary_conditions!(positions, L)
         end
     end
 end
-function verlet_integration!(positions, velocities, forces, L, tau,fc)
+function verlet_integration(positions, velocities, forces, L, tau,fc)
     N = length(positions)
 
     new_positions = deepcopy(positions)
@@ -109,6 +110,7 @@ end
 function calculate_energy(positions, velocities, L, Vc, fc, rc)
     kinetic_energy = 0.5 * sum(sum(velocities .^ 2, dims=2))
     potential_energy = 0.0
+    N = length(positions)
     for i in 1:N
         for j in i+1:N
             rij = [positions[j][1] - positions[i][1], positions[j][2] - positions[i][2]]
@@ -148,14 +150,14 @@ function md_simulation(positions, velocities, L, tau, steps, temperature_interva
     for step in 1:equilibrium_steps
         println("Step $step")
         forces = calculate_forces(positions, L, fc)
-        positions, velocities, forces = verlet_integration!(positions, velocities, forces, L, tau,fc)
+        new_positions, new_velocities, new_forces = verlet_integration(positions, velocities, forces, L, tau,fc)
 
         if step % steps == 0
             total_momentum = sum(velocities, dims=1)
             velocities .-= total_momentum / N
         end
 
-        kinetic_energy, potential_energy = calculate_energy(positions, velocities, Lx, Vc, fc, rc)
+        kinetic_energy, potential_energy = calculate_energy(new_positions, new_velocities, L, Vc, fc, rc)
 
         temperature = (2 / (3 * N)) * kinetic_energy
         pairwise_distances = [norm(positions[i] - positions[j]) for i in 1:N for j in 1:N if i != j]
@@ -166,7 +168,7 @@ function md_simulation(positions, velocities, L, tau, steps, temperature_interva
                 if i != j
                     force = 0.0
                     for k in 1:2
-                        force += forces[i][k] * (positions[i][k] - positions[j][k])
+                        force += new_forces[i][k] * (new_positions[i][k] - new_positions[j][k])
                     end
                     push!(pairwise_forces, force / pairwise_distances[(i-1)*(N-1)+(j-1)])
                 end
@@ -185,6 +187,7 @@ function md_simulation(positions, velocities, L, tau, steps, temperature_interva
             push!(mean_pressure_values, mean_pressure)
 
             println("Step $step: Mean Temperature = $mean_temperature, Mean Pressure = $mean_pressure")
+            println("step $step: kinetic_energy = $kinetic_energy, potential_energy = $potential_energy")
             
             # Check for stability
             if abs(mean_temperature - prev_mean_temperature) < tolerance && abs(mean_pressure - prev_mean_pressure) < tolerance
@@ -202,6 +205,9 @@ function md_simulation(positions, velocities, L, tau, steps, temperature_interva
             prev_mean_temperature = mean_temperature
             prev_mean_pressure = mean_pressure
         end
+        # forces = new_forces 
+        positions = new_positions
+        velocities = new_velocities
     end
     return positions, velocities
 end
